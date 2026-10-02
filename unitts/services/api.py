@@ -22,6 +22,8 @@ def build_registry() -> EngineRegistry:
     else:
         registry.register_manifest(DummyEngine.manifest())
     registry.register_factory("dummy", DummyEngine)
+    from unitts.engines.indextts import IndexTTSEngine
+    registry.register_factory("indextts-2.5", IndexTTSEngine)
     return registry
 
 

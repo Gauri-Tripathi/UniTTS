@@ -1,13 +1,27 @@
 schema_version: "1"
 engine_id: indextts-2.5
 family: IndexTTS-2.5
-engine_version: 0.0.0
+engine_version: 0.1.0
 protocol_versions: ["1.0"]
-status: license_blocked
-entrypoint: null
-upstream_code: exact upstream repository must be verified
-checkpoints: []
-capabilities: {streaming: false, voice_cloning: true, execution_strategy: autoregressive}
-hardware: {accelerator: cuda, min_vram_gb: 0, min_driver: verify, cuda_runtime: verify, compute_capability: verify}
-license: {code: unknown, weights: commercial use requires explicit verification/authorization, commercial_use: restricted}
-limitations: [No implementation; blocked pending weight authorization]
+status: experimental
+entrypoint: unitts.engines.indextts:IndexTTSEngine
+upstream_code: https://github.com/index-tts/index-tts/tree/d9e41aac89fd00b3d71497fddb287b7f24613712
+checkpoints: [IndexTeam/IndexTTS-2.5]
+capabilities:
+  streaming: false
+  voice_cloning: true
+  languages: [en, zh, ja, es, ar]
+  execution_strategy: autoregressive
+hardware:
+  accelerator: cuda
+  cuda_runtime: 12.8 (upstream locked Torch build)
+license:
+  code: LicenseRef-Bilibili-IndexTTS
+  weights: bilibili Model Use License Agreement
+  commercial_use: restricted
+  notes: Upstream terms apply to separately downloaded code and weights; see upstream LICENSE.
+limitations:
+  - Experimental; real-GPU validation required
+  - WAV only; one local reference
+  - Streaming not implemented
+  - No guaranteed minimum VRAM profile

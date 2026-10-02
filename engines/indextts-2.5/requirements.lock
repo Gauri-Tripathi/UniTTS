@@ -1,1 +1,5 @@
-# No third-party runtime dependencies selected.
+# Host tools only. Model dependencies come from the upstream uv.lock at:
+# d9e41aac89fd00b3d71497fddb287b7f24613712
+# UniTTS runs `uv sync --frozen --python 3.11 --no-dev` in that checkout.
+uv==0.9.5
+filelock==3.20.0

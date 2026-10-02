@@ -1,3 +1,6 @@
-"""Catalogue skeleton for indextts-2.5; no fake engine is provided."""
+"""Packaged entrypoint for the managed IndexTTS-2.5 adapter."""
 
-STATUS = "license_blocked"
+from unitts.engines.indextts import IndexTTSEngine
+
+STATUS = "experimental"
+__all__ = ["IndexTTSEngine", "STATUS"]

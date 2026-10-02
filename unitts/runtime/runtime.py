@@ -20,7 +20,8 @@ class UniTTSRuntime:
         worker = self._workers.get(engine_id)
         if worker is None:
             worker = EngineWorker(self.registry.create(engine_id))
-            await worker.load(LoadContext(replica_id=f"{engine_id}-local-0"))
+            device = "auto" if self.registry.get(engine_id).hardware.accelerator == "cuda" else "cpu"
+            await worker.load(LoadContext(replica_id=f"{engine_id}-local-0", device=device))
             self._workers[engine_id] = worker
         return worker
 
