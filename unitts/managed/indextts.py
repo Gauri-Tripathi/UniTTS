@@ -12,21 +12,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from unitts.managed.process import child_environment as child_environment
+
 UPSTREAM_URL = "https://github.com/index-tts/index-tts.git"
 SOURCE_REVISION = "d9e41aac89fd00b3d71497fddb287b7f24613712"
 MODEL_REPO = "IndexTeam/IndexTTS-2.5"
 MODEL_REVISION = "c39ce5ba981572cb187443877ff559dfb246ce63"
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "indextts.py"
 logger = logging.getLogger(__name__)
-
-
-def child_environment() -> dict[str, str]:
-    env = dict(os.environ)
-    for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT", "UV_PROJECT", "UV_PYTHON"):
-        env.pop(key, None)
-    env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
-    return env
 
 
 class IndexTTSEnvironment:

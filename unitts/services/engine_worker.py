@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
 import os
-import sys
 from typing import Any
 
-from unitts.contracts import PROTOCOL_VERSION, InferenceContext, LoadContext, ProtocolVersionError, SynthesisRequest
+from unitts.contracts import InferenceContext, LoadContext, ReplicaState, SynthesisRequest
 from unitts.runtime.worker import EngineWorker
 from unitts.services.api import build_registry
+from unitts.workers.protocol import serve as serve_protocol
 
 
 async def serve() -> None:
@@ -23,30 +22,33 @@ async def serve() -> None:
     replica_id = os.environ.get("UNITTS_REPLICA_ID", f"{engine_id}-0")
     registry = build_registry()
     worker = EngineWorker(registry.create(engine_id))
-    await worker.load(LoadContext(replica_id=replica_id, device=os.environ.get("UNITTS_DEVICE", "cpu")))
-    while line := await asyncio.to_thread(sys.stdin.readline):
-        try:
-            envelope = json.loads(line)
-            if envelope.get("protocol_version") != PROTOCOL_VERSION:
-                raise ProtocolVersionError(f"Unsupported protocol: {envelope.get('protocol_version')}")
-            operation = envelope.get("operation")
-            if operation == "generate":
-                request = SynthesisRequest.model_validate(envelope["request"])
-                result = await worker.generate(request, InferenceContext(request_id=request.request_id, tenant_id=envelope.get("tenant_id", "local")))
-                payload: dict[str, Any] = result.model_dump(exclude={"data"}, mode="json")
-                payload["audio_base64"] = base64.b64encode(result.data).decode("ascii")
-            elif operation == "health":
-                payload = (await worker.health()).model_dump(mode="json")
-            elif operation == "unload":
-                await worker.unload()
-                payload = {"unloaded": True}
-            else:
-                raise ValueError(f"Unsupported operation: {operation}")
-            response = {"protocol_version": PROTOCOL_VERSION, "ok": True, "result": payload}
-        except Exception as exc:
-            error = exc.as_dict() if hasattr(exc, "as_dict") else {"code": "worker_error", "message": str(exc)}
-            response = {"protocol_version": PROTOCOL_VERSION, "ok": False, "error": error}
-        print(json.dumps(response), flush=True)
+
+    async def dispatch(envelope: dict[str, Any]) -> dict[str, Any]:
+        operation = envelope.get("operation")
+        if operation == "load":
+            await worker.load(LoadContext.model_validate(envelope.get("context", {
+                "replica_id": replica_id, "device": os.environ.get("UNITTS_DEVICE", "auto"),
+            })))
+            return {"loaded": True}
+        if operation not in {"generate", "health", "unload"}:
+            raise ValueError(f"Unsupported operation: {operation}")
+        if worker.state is ReplicaState.UNLOADED and operation != "unload":
+            await worker.load(LoadContext(replica_id=replica_id, device=os.environ.get("UNITTS_DEVICE", "auto")))
+        if operation == "generate":
+            request = SynthesisRequest.model_validate(envelope["request"])
+            result = await worker.generate(request, InferenceContext(request_id=request.request_id, tenant_id=envelope.get("tenant_id", "local")))
+            payload: dict[str, Any] = result.model_dump(exclude={"data"}, mode="json")
+            payload["audio_base64"] = base64.b64encode(result.data).decode("ascii")
+            return payload
+        if operation == "health":
+            return (await worker.health()).model_dump(mode="json")
+        await worker.unload()
+        return {"unloaded": True}
+
+    try:
+        await serve_protocol(dispatch)
+    finally:
+        await worker.unload()
 
 
 def main() -> None:

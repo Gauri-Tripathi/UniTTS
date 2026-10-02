@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
+import hashlib
 import json
-import os
 import random
 import sys
 import tempfile
-import traceback
 import warnings
 from pathlib import Path
+from time import perf_counter
 
 
 def preflight(device: str) -> dict:
@@ -63,6 +64,7 @@ def generate(model, payload: dict) -> dict:
     import torch
 
     options = dict(payload["options"])
+    references = {}
     seed = payload.get("seed")
     if seed is not None:
         random.seed(seed)
@@ -77,29 +79,53 @@ def generate(model, payload: dict) -> dict:
             raise ValueError(f"{field} must contain finite, audible speech")
         if duration > 30:
             raise ValueError(f"{field} is {duration:.1f}s long. Use a clean 3–15s excerpt (maximum 30s).")
+        references[field] = {
+            "duration_seconds": duration, "sample_rate": rate,
+            "channels": 1 if samples.ndim == 1 else samples.shape[1],
+            "peak": float(np.max(np.abs(samples))),
+            "near_full_scale_fraction": float(np.mean(np.abs(samples) >= 0.999)),
+        }
     if options.get("use_emo_text") and model.qwen_emo is None:
         # Optional emotion model is only loaded when requested, in this same worker.
         from indextts.infer_v2_5 import QwenEmotion
         model.qwen_emo = QwenEmotion(str(Path(model.model_dir) / model.cfg.qwen_emo_path))
     with tempfile.TemporaryDirectory(prefix="unitts-index-") as temp:
         output = Path(temp) / "speech.wav"
+        start = perf_counter()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             model.infer(output_path=str(output), **options)
+        inference_seconds = perf_counter() - start
         audio, rate = sf.read(output)
         if not audio.size or not np.isfinite(audio).all() or np.max(np.abs(audio)) < 1e-5:
             raise RuntimeError("IndexTTS returned empty, silent, or non-finite audio")
         # Respect the common request's sample rate without falsifying the WAV header.
+        native_rate = rate
+        native_duration = len(audio) / rate
         target_rate = payload.get("sample_rate") or rate
+        start = perf_counter()
         if target_rate != rate:
             import librosa
             audio = librosa.resample(audio, orig_sr=rate, target_sr=target_rate, axis=0)
             rate = target_rate
             sf.write(output, audio, rate, subtype="PCM_16")
+        resample_seconds = perf_counter() - start if target_rate != native_rate else 0.0
+        data = output.read_bytes()
         return {
-            "audio_base64": base64.b64encode(output.read_bytes()).decode("ascii"),
+            "audio_base64": base64.b64encode(data).decode("ascii"),
             "sample_rate": rate, "duration_seconds": len(audio) / rate,
             "warnings": [str(item.message) for item in caught],
+            "diagnostics": {
+                "inference_seconds": inference_seconds,
+                "resample_seconds": resample_seconds,
+                "native_sample_rate": native_rate, "output_sample_rate": rate,
+                "native_duration_seconds": native_duration,
+                "audio_sha256": hashlib.sha256(data).hexdigest(),
+                "text_sha256": hashlib.sha256(options["text"].encode("utf-8")).hexdigest(),
+                "input_characters": len(options["text"]),
+                "language": options.get("lang"), "duration_factor": options.get("duration_factor", 1.0),
+                "references": references,
+            },
         }
 
 
@@ -120,25 +146,23 @@ def main() -> None:
         snapshot_download("IndexTeam/IndexTTS-2.5", revision=args.revision, local_dir=args.download)
         ensure_models_available(args.download)
         return
-    # Keep protocol output separate even from native libraries writing to fd 1.
-    protocol = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
-    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+    # -I intentionally excludes the host package: load the stdlib-only sibling.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from protocol import serve
+
     model = None
-    for line in sys.stdin:
-        try:
-            payload = json.loads(line)
-            if payload["operation"] == "load":
-                model, result = load_model(payload)
-            elif payload["operation"] == "generate" and model is not None:
-                result = generate(model, payload)
-            else:
-                raise ValueError("Worker needs a load operation before generation")
-            protocol.write(json.dumps({"ok": True, "result": result}) + "\n")
-        except Exception as exc:
-            traceback.print_exc(file=sys.stderr)
-            protocol.write(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}) + "\n")
-            # Exit after failures so a damaged CUDA context is never reused.
-            break
+
+    def dispatch(payload):
+        nonlocal model
+        if payload["operation"] == "load":
+            model, result = load_model(payload)
+            return result
+        if payload["operation"] == "generate" and model is not None:
+            return generate(model, payload)
+        raise ValueError("Worker needs a load operation before generation")
+
+    # Exit after failures so a damaged CUDA context is never reused.
+    asyncio.run(serve(dispatch, stop_on_error=True))
 
 
 if __name__ == "__main__":

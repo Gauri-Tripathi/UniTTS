@@ -1,6 +1,7 @@
 """Offline tests of the real adapter boundaries; no weights or GPU downloads."""
 
 import base64
+import hashlib
 import io
 import json
 import sys
@@ -217,7 +218,7 @@ def test_real_process_reuse_and_timeout_cleanup(tmp_path):
         "for line in sys.stdin:\n"
         " p = json.loads(line)\n"
         " if p.get('wait'): time.sleep(10)\n"
-        " print(json.dumps({'ok': True, 'result': {'pid': os.getpid()}}), flush=True)\n",
+        " print(json.dumps({'protocol_version': p['protocol_version'], 'message_id': p['message_id'], 'ok': True, 'result': {'pid': os.getpid()}}), flush=True)\n",
         encoding="utf-8",
     )
     worker = WorkerProcess([sys.executable, "-u", str(script)], cwd=tmp_path, log_path=tmp_path / "worker.log")
@@ -232,8 +233,8 @@ def test_real_process_reuse_and_timeout_cleanup(tmp_path):
 
 @pytest.mark.parametrize("body,match", [
     ("import sys; sys.exit(3)", "exited"),
-    ("import sys; sys.stdin.readline(); print('not-json', flush=True)", "IndexTTS"),
-    ("import sys; sys.stdin.readline(); print('{\"ok\": false, \"error\": \"CUDA failure\"}', flush=True)", "CUDA failure"),
+    ("import sys; sys.stdin.readline(); print('not-json', flush=True)", "Engine"),
+    ("import json, sys; p=json.loads(sys.stdin.readline()); print(json.dumps({'protocol_version': p['protocol_version'], 'message_id': p['message_id'], 'ok': False, 'error': {'message': 'CUDA failure'}}), flush=True)", "CUDA failure"),
 ])
 def test_real_process_failure_is_bounded(tmp_path, body, match):
     worker = WorkerProcess([sys.executable, "-u", "-c", body], cwd=tmp_path, log_path=tmp_path / "worker.log")
@@ -291,6 +292,12 @@ def test_worker_audio_validation_and_wav_metadata(reference, monkeypatch):
         assert wav.getframerate() == result["sample_rate"] == 22050
         assert wav.getnframes() == 2205
     assert result["duration_seconds"] == 0.1
+    diagnostics = result["diagnostics"]
+    assert diagnostics["native_sample_rate"] == diagnostics["output_sample_rate"] == 22050
+    assert diagnostics["resample_seconds"] == 0
+    assert diagnostics["references"]["spk_audio_prompt"]["duration_seconds"] == 0.1
+    assert diagnostics["audio_sha256"] == hashlib.sha256(base64.b64decode(result["audio_base64"])).hexdigest()
+    assert diagnostics["input_characters"] == len("hello")
 
 
 def test_worker_rejects_long_reference_before_inference(tmp_path, monkeypatch):
@@ -326,7 +333,7 @@ async def test_service_adapter_maps_shared_request(reference, monkeypatch):
     await engine.load(LoadContext(replica_id="test", device="auto"))
     result = TTSResponse(audio=b"wav", sample_rate=22050, duration_seconds=1)
     synthesize = Mock(return_value=result)
-    monkeypatch.setattr(engine._provider, "synthesize", synthesize)
+    monkeypatch.setattr(IndexTTSProvider, "synthesize", synthesize)
     request = SynthesisRequest(
         text="hello", reference=VoiceReference(uri=str(reference)), seed=11,
         controls={"emo_vector": [0.5, 0, 0, 0, 0, 0, 0, 0]},

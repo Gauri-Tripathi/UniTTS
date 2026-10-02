@@ -4,17 +4,29 @@ from __future__ import annotations
 
 import atexit
 import json
+import os
 import queue
 import subprocess
 import threading
 from pathlib import Path
 from typing import Any
 
-from unitts.managed.indextts import child_environment
+from unitts.workers.protocol import read_response, request_message
+
+
+def child_environment() -> dict[str, str]:
+    """Prevent host virtualenv settings from leaking into any managed worker."""
+    env = dict(os.environ)
+    for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT", "UV_PROJECT", "UV_PYTHON"):
+        env.pop(key, None)
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
 
 
 class WorkerProcess:
-    def __init__(self, command: list[str], *, cwd: Path, log_path: Path) -> None:
+    def __init__(self, command: list[str], *, cwd: Path, log_path: Path, label: str = "Engine") -> None:
+        self.label = label
         self.log_path = log_path
         log_path.parent.mkdir(parents=True, exist_ok=True)
         self._log = log_path.open("a", encoding="utf-8")
@@ -46,20 +58,17 @@ class WorkerProcess:
                 if self.process.poll() is not None:
                     raise RuntimeError("worker exited")
                 assert self.process.stdin is not None
-                self.process.stdin.write(json.dumps(payload) + "\n")
+                message = request_message(payload)
+                self.process.stdin.write(json.dumps(message) + "\n")
                 self.process.stdin.flush()
                 line = self._responses.get(timeout=timeout)
                 if line is None:
                     raise RuntimeError("worker exited before responding")
-                response = json.loads(line)
-                if not response.get("ok"):
-                    # A failed CUDA context must never be reused.
-                    raise RuntimeError(response.get("error", "unknown worker error"))
-                return response["result"]
+                return read_response(line, message["message_id"])
             except Exception as exc:
                 self.close()
                 reason = f"timed out after {timeout:g}s" if isinstance(exc, queue.Empty) else str(exc)
-                raise RuntimeError(f"IndexTTS {reason}. Worker stopped; next call starts a fresh worker. Log: {self.log_path}") from exc
+                raise RuntimeError(f"{self.label} {reason}. Worker stopped; next call starts a fresh worker. Log: {self.log_path}") from exc
             except BaseException:
                 self.close()
                 raise
