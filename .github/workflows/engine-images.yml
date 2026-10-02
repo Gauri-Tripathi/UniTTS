@@ -6,7 +6,7 @@ on:
         description: Engine directory changed or selected for validation
         required: true
         type: choice
-        options: [dummy, qwen3-tts, f5-tts, fish-s2-pro, cosyvoice3, indextts-2.5, xtts-v2]
+        options: [dummy, qwen3-tts, f5-tts, fish-s2-pro, indextts-2.5, xtts-v2]
 permissions:
   contents: read
 jobs:

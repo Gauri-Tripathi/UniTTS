@@ -1,7 +1,7 @@
 # GPU Provider Installation and Usage
 
 UniTTS loads GPU providers lazily. Installing `.[gpu]` supplies shared packages
-only; it does not install F5-TTS, Dia, Coqui TTS, Qwen3-TTS, or CosyVoice.
+only; it does not install F5-TTS, Dia, Coqui TTS, or Qwen3-TTS.
 
 The current cluster warning shows that the installed PyTorch CUDA build expects a
 newer NVIDIA driver than is available. Qwen still completed, but it took more than
@@ -18,8 +18,8 @@ python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda
 
 ## Keep Provider Environments Separate
 
-Do not install every GPU stack into the Qwen environment. F5-TTS, Dia, XTTS, and
-CosyVoice have independent Torch, Transformers, Python, and system-library
+Do not install every GPU stack into the Qwen environment. F5-TTS, Dia, and XTTS
+have independent Torch, Transformers, Python, and system-library
 requirements. Create one environment per provider, then install this checkout in
 that environment:
 
@@ -137,42 +137,6 @@ with UniTTS(provider="dia", device="cuda") as tts:
 open("dia.wav", "wb").write(response.audio)
 ```
 
-## CosyVoice
-
-CosyVoice is source-installed rather than a normal UniTTS extra. Its official
-instructions currently use Python 3.10 and repository requirements, so use a
-dedicated environment:
-
-```bash
-git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
-cd CosyVoice
-python -m pip install -r requirements.txt
-export COSYVOICE_ROOT="$PWD"
-cd /nlsasfs/home/dibd/dibd-speech/iitm/triga/experiments/emotion_tts
-python -m pip install -e ".[gpu]"
-export PYTHONPATH="$COSYVOICE_ROOT:$PYTHONPATH"
-```
-
-Download a CosyVoice model first, then pass its local directory to UniTTS. The
-path must match the model you downloaded. Keep `PYTHONPATH` set for shells that
-run the UniTTS CosyVoice provider.
-
-```python
-from unitts import TTSRequest, UniTTS
-
-with UniTTS(
-    provider="cosyvoice",
-    device="cuda",
-    model="/path/to/pretrained_models/CosyVoice2-0.5B",
-) as tts:
-    response = tts.synthesize(TTSRequest(
-        text="Hello from CosyVoice.",
-        language="en",
-    ))
-
-open("cosyvoice.wav", "wb").write(response.audio)
-```
-
 ## Fish Speech
 
 `fish-speech` is a client for the official self-hosted Fish Speech API, not the
@@ -234,5 +198,4 @@ python test_gpu_models.py f5-tts
 - [F5-TTS installation](https://github.com/SWivid/F5-TTS)
 - [Dia installation](https://github.com/nari-labs/dia)
 - [Coqui TTS installation](https://coqui-tts.readthedocs.io/en/latest/installation.html)
-- [CosyVoice installation](https://github.com/FunAudioLLM/CosyVoice)
 - [Fish Speech self-hosting](https://docs.fish.audio/developer-guide/self-hosting/running-inference)

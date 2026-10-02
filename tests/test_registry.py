@@ -9,5 +9,4 @@ def test_builtin_providers_register() -> None:
     assert "openai" in providers
     assert "dia" in providers
     assert "xtts" in providers
-    assert "cosyvoice" in providers
     assert "qwen3-tts" in providers

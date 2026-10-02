@@ -36,7 +36,7 @@ def test_catalogue_contains_remaining_model_families_and_dummy() -> None:
     assert any(item.engine_id == "dummy" for item in public)
     assert {item.family for item in model_families} == {
         "Qwen3-TTS", "F5-TTS", "Fish Audio S2 Pro",
-        "Fun-CosyVoice3", "IndexTTS-2.5", "XTTS-v2",
+        "IndexTTS-2.5", "XTTS-v2",
     }
 
 

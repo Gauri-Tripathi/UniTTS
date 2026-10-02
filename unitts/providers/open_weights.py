@@ -244,63 +244,6 @@ class XTTSV2Provider(HttpProvider):
         cleanup_torch()
 
 
-@ProviderRegistry.register("cosyvoice")
-@ProviderRegistry.register("cosyvoice2")
-class CosyVoiceProvider(HttpProvider):
-    """CosyVoice/CosyVoice2 provider."""
-
-    name = "cosyvoice"
-    capabilities = CapabilityMatrix(
-        provider_type=ProviderType.GPU,
-        languages=["zh", "en", "ja", "ko", "yue"],
-        voice_cloning=True,
-        streaming=True,
-        emotion=True,
-        speaking_style=True,
-        output_formats=["wav"],
-        generation_controls=True,
-        requires_gpu=True,
-        min_gpu_vram_gb=6.0,
-        notes="Uses FunAudioLLM CosyVoice package APIs when installed.",
-    )
-
-    def __init__(self, *, device: str = "auto", **kwargs: Any) -> None:
-        super().__init__(device=device, **kwargs)
-        self._model: Any | None = None
-
-    def synthesize(self, request: TTSRequest) -> TTSResponse:
-        warnings = self._warnings_for(request)
-        try:
-            from cosyvoice.cli.cosyvoice import CosyVoice, CosyVoice2
-        except Exception as exc:
-            raise ImportError(
-                "CosyVoice is not installed. Clone and install the FunAudioLLM CosyVoice "
-                "repository in a separate environment; see docs/gpu-providers.md."
-            ) from exc
-        if self._model is None:
-            model_path = self.options.get("model", "pretrained_models/CosyVoice2-0.5B")
-            model_cls = CosyVoice2 if "2" in str(model_path).lower() else CosyVoice
-            self._model = model_cls(model_path)
-
-        text = request.text or request.ssml or request.phonemes or ""
-        prompt_text = request.reference_text or self.options.get("prompt_text", "")
-        prompt_audio = str(request.reference_audio[0]) if request.reference_audio else self.options.get("prompt_audio")
-        if prompt_audio and hasattr(self._model, "inference_zero_shot"):
-            results = self._model.inference_zero_shot(text, prompt_text, prompt_audio, stream=request.stream)
-        elif hasattr(self._model, "inference_sft"):
-            results = self._model.inference_sft(text, request.voice or self.options.get("voice", "中文女"), stream=request.stream)
-        else:
-            raise RuntimeError("Installed CosyVoice package does not expose a supported inference method")
-        first = next(iter(results))
-        audio = first.get("tts_speech") if isinstance(first, dict) else first
-        sample_rate = int(self.options.get("sample_rate", request.sample_rate or 22050))
-        return _write_float_wav(audio, sample_rate, {"provider": self.name, "voice": request.voice}, warnings)
-
-    def cleanup(self) -> None:
-        self._model = None
-        cleanup_torch()
-
-
 @ProviderRegistry.register("fish-speech")
 @ProviderRegistry.register("fish-speech-local")
 class FishSpeechProvider(HttpProvider):
