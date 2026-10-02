@@ -18,6 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+indextts = [
+  "uv>=0.9,<1",
+  "filelock>=3.13",
+]
 cpu = [
   "numpy>=1.24",
   "soundfile>=0.12",
