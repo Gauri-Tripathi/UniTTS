@@ -28,15 +28,15 @@ def test_manifest_validation_and_protocol_rejection() -> None:
         EngineManifest.model_validate({"engine_id": "Bad ID"})
 
 
-def test_catalogue_has_exactly_ten_public_model_families_plus_dummy() -> None:
+def test_catalogue_contains_remaining_model_families_and_dummy() -> None:
     registry = EngineRegistry()
     registry.discover([Path("engines")])
     public = registry.list()
     model_families = [item for item in public if item.engine_id != "dummy"]
-    assert len(model_families) == 10
+    assert any(item.engine_id == "dummy" for item in public)
     assert {item.family for item in model_families} == {
-        "OmniVoice", "dots.tts", "Qwen3-TTS", "F5-TTS", "Fish Audio S2 Pro",
-        "Fun-CosyVoice3", "IndexTTS-2.5", "Microsoft VibeVoice", "XTTS-v2", "VoxCPM2",
+        "Qwen3-TTS", "F5-TTS", "Fish Audio S2 Pro",
+        "Fun-CosyVoice3", "IndexTTS-2.5", "XTTS-v2",
     }
 
 
