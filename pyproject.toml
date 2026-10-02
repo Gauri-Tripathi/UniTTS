@@ -42,6 +42,9 @@ audio = [
   "librosa>=0.10",
 ]
 dev = [
+  "numpy>=1.24",
+  "soundfile>=0.12",
+  "filelock>=3.13",
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
   "responses>=0.25",
