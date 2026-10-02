@@ -43,7 +43,8 @@ class UniTTS:
         preference = self.device_preference
         if preference == "auto" and provider_cls.capabilities.provider_type in {ProviderType.API, ProviderType.CPU}:
             preference = "cpu"
-        device = resolve_device(preference, min_vram_gb=min_vram_gb)
+        # Managed providers must inspect hardware in their own interpreter.
+        device = preference if getattr(provider_cls, "manages_device", False) else resolve_device(preference, min_vram_gb=min_vram_gb)
         logger.info("Loading provider %s on %s", provider, device)
         self.provider = provider_cls(device=device, **options)
         self.provider_name = provider
@@ -65,8 +66,13 @@ class UniTTS:
     def synthesize_to_file(self, text: str | TTSRequest, output: str | Path, **kwargs: Any) -> TTSResponse:
         """Synthesize speech and write audio bytes to a file."""
 
+        target = Path(output).expanduser()
+        if target.is_dir():
+            raise ValueError(f"Output must be a filename, not a directory: {target}")
+        if not target.parent.is_dir():
+            raise ValueError(f"Output directory does not exist: {target.parent}")
         response = self.synthesize(text, **kwargs)
-        Path(output).write_bytes(response.audio)
+        target.write_bytes(response.audio)
         return response
 
     def synthesize_dialogue(self, request: DialogueRequest) -> TTSResponse:

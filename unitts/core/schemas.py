@@ -102,6 +102,9 @@ class TTSRequest(BaseModel):
     max_length_seconds: float | None = Field(default=None, gt=0.0)
     cfg_scale: float | None = Field(default=None, ge=0.0)
 
+    # Namespaced controls interpreted and validated by the selected provider.
+    controls: dict[str, Any] = Field(default_factory=dict)
+
     output_format: OutputFormat = OutputFormat.WAV
     sample_rate: int | None = Field(default=24000, gt=0)
     normalize: bool = True
