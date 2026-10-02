@@ -54,6 +54,47 @@ with UniTTS(
 print(result.metadata)
 ```
 
+## IndexTTS-2.5
+
+Install the lightweight managed-engine tools into your current environment:
+
+```bash
+python -m pip install -e ".[indextts]"
+```
+
+Then use the same Python API, including in a Colab Python 3.13 notebook:
+
+```python
+from unitts import UniTTS
+
+with UniTTS(provider="indextts") as tts:
+    result = tts.synthesize_to_file(
+        "Hello from IndexTTS.",
+        "hello.wav",
+        reference_audio="reference.wav",
+        language="en",
+    )
+```
+
+First use prepares a separate Python 3.11 environment, installs the pinned upstream
+dependencies, downloads model files, and starts an isolated worker. Your notebook's
+Torch and Transformers installations are untouched. Later calls on the same `tts`
+object reuse its loaded model. `cleanup()` or the context manager stops the worker.
+Git and a working NVIDIA GPU/driver are required for the default path. Downloads
+require network access and several GB of free disk space.
+
+Optionally prepare the environment ahead of first synthesis:
+
+```bash
+unitts setup indextts
+unitts doctor indextts
+unitts synthesize "Hello" --provider indextts --reference-audio reference.wav --output hello.wav
+```
+
+The backend is experimental; real-GPU compatibility is not certified. Model code
+and weights retain their upstream license. See [the IndexTTS guide](docs/indextts.md)
+for Colab setup, emotion controls, cached checkpoints, logs, and limitations.
+
 ## Commands
 
 ```bash

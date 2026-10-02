@@ -40,11 +40,35 @@ def main(verbose: bool = False) -> None:
 
 
 @main.command()
+@click.argument("provider", type=click.Choice(["indextts", "indextts-2.5", "index-tts"]))
+@click.option("--cache-dir", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--model-dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--device", type=click.Choice(["auto", "cuda", "cpu"]), default="auto")
+@user_errors
+def setup(provider: str, cache_dir: Path | None, model_dir: Path | None, device: str) -> None:
+    """Prepare a managed engine without changing this interpreter's packages."""
+    with UniTTS(provider=provider, device=device, cache_dir=cache_dir, model_dir=model_dir) as engine:
+        click.echo(json.dumps(engine.provider.setup(), indent=2))
+
+
+@main.command()
+@click.argument("provider", type=click.Choice(["indextts", "indextts-2.5", "index-tts"]))
+@click.option("--cache-dir", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--model-dir", type=click.Path(file_okay=False, path_type=Path))
+def doctor(provider: str, cache_dir: Path | None, model_dir: Path | None) -> None:
+    """Show managed paths and installation state without downloading models."""
+    from unitts.managed.indextts import IndexTTSEnvironment
+    click.echo(json.dumps(IndexTTSEnvironment(cache_dir, model_dir).status(), indent=2))
+
+
+@main.command()
 @click.argument("text", required=False)
 @click.option("--file", "-f", "input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Read text from a file.")
 @click.option("--provider", "-p", default="piper", show_default=True, help="Provider name.")
 @click.option("--voice", help="Voice id or model voice name.")
 @click.option("--language", help="Language code.")
+@click.option("--reference-audio", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Reference recording for voice cloning.")
+@click.option("--emotion", help="Emotion supported by the selected provider.")
 @click.option("--speed", type=float, help="Speech speed multiplier.")
 @click.option("--pitch", type=float, help="Pitch in semitones where supported.")
 @click.option("--volume", type=float, help="Volume multiplier where supported.")
@@ -57,6 +81,8 @@ def synthesize(
     provider: str,
     voice: str | None,
     language: str | None,
+    reference_audio: Path | None,
+    emotion: str | None,
     speed: float | None,
     pitch: float | None,
     volume: float | None,
@@ -86,6 +112,8 @@ def synthesize(
         text=body.strip(),
         voice=voice,
         language=language,
+        reference_audio=reference_audio,
+        emotion=emotion,
         speed=speed,
         pitch=pitch,
         volume=volume,
