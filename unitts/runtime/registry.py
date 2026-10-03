@@ -24,8 +24,15 @@ class EngineRegistry:
         self._manifests[manifest.engine_id] = manifest
 
     def register_factory(self, engine_id: str, factory: type[SpeechEngine]) -> None:
+        manifest = factory.manifest()
+        if manifest.engine_id != engine_id:
+            raise ValueError(f"Factory engine id {manifest.engine_id} does not match {engine_id}")
         if engine_id not in self._manifests:
-            self.register_manifest(factory.manifest())
+            self.register_manifest(manifest)
+        else:
+            # Executable code is authoritative; catalogue files must not override
+            # the actual provider's capability declaration.
+            self._manifests[engine_id] = manifest
         self._factories[engine_id] = factory
 
     def discover(self, roots: Iterable[Path]) -> None:
@@ -54,4 +61,5 @@ class EngineRegistry:
             module_name, object_name = manifest.entrypoint.split(":", 1)
             candidate: Any = getattr(importlib.import_module(module_name), object_name)
             factory = candidate
+            self.register_factory(engine_id, factory)
         return factory()

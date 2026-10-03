@@ -24,6 +24,8 @@ def build_registry() -> EngineRegistry:
     registry.register_factory("dummy", DummyEngine)
     from unitts.engines.indextts import IndexTTSEngine
     registry.register_factory("indextts-2.5", IndexTTSEngine)
+    from unitts.engines.qwen3_tts import Qwen3TTSEngine
+    registry.register_factory("qwen3-tts", Qwen3TTSEngine)
     return registry
 
 

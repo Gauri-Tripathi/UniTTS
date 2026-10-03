@@ -7,7 +7,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from unitts.core.capabilities import ProviderType
+from unitts.core.capabilities import Capabilities, ProviderType
 from unitts.core.config import provider_options
 from unitts.core.device import resolve_device
 from unitts.core.provider import BaseProvider
@@ -48,6 +48,13 @@ class UniTTS:
         logger.info("Loading provider %s on %s", provider, device)
         self.provider = provider_cls(device=device, **options)
         self.provider_name = provider
+
+    @property
+    def capabilities(self) -> Capabilities:
+        """Capabilities of the configured provider, safe for callers to inspect."""
+        if self.provider is None:
+            raise RuntimeError("No provider loaded")
+        return self.provider.capabilities.model_copy(deep=True)
 
     def synthesize(self, text: str | TTSRequest, **kwargs: Any) -> TTSResponse:
         """Synthesize speech from text or a prebuilt request."""

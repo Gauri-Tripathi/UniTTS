@@ -38,7 +38,7 @@ class DummyEngine(SpeechEngine):
             engine_id="dummy", family="Dummy", engine_version="1.0.0",
             protocol_versions=["1.0"], status=EngineStatus.READY,
             entrypoint="unitts.engines.dummy:DummyEngine", upstream_code="first-party",
-            capabilities=EngineCapabilities(streaming=True, execution_strategy="simple", safe_pause_boundaries=True),
+            capabilities=EngineCapabilities(streaming=True, execution_strategy="simple", safe_pause_boundaries=True, supports_seed=True),
             license=LicenseInfo(code="MIT", weights="none", commercial_use="allowed"),
         )
 
