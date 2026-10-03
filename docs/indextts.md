@@ -75,8 +75,11 @@ CUDA 12.8 Torch wheels, so the NVIDIA driver must support that runtime.
 `unitts setup indextts` performs preparation ahead of time. In a notebook:
 
 ```python
-from unitts.providers.indextts import IndexTTSProvider
-print(IndexTTSProvider().setup())
+from unitts import UniTTS
+
+with UniTTS(provider="indextts") as tts:
+    print(tts.setup())   # Explicit preparation; synthesis also prepares on first use.
+    print(tts.status())  # Paths and worker state; no downloads or model loading.
 ```
 
 To prevent automatic installation, use `UniTTS(provider="indextts",
@@ -155,6 +158,10 @@ IndexTTS checkpoint is not accepted by this adapter.
 `unitts doctor indextts` reports interpreter, checkpoint, revision and log paths
 without downloads. `setup.log` contains install/preflight output. `worker.log`
 contains model loading and inference diagnostics; it may contain submitted text.
+
+The SDK exposes the same diagnostics as `tts.status()` and capabilities as
+`tts.capabilities`. Setup, status, synthesis, and cleanup all go through `UniTTS`;
+applications do not need to instantiate IndexTTS providers or environment managers.
 
 Default limits: setup commands/downloads 1800s each, model loading 600s, generation
 300s. Override `setup_timeout`, `load_timeout`, and `timeout` in the constructor.

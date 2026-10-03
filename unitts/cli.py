@@ -48,17 +48,18 @@ def main(verbose: bool = False) -> None:
 def setup(provider: str, cache_dir: Path | None, model_dir: Path | None, device: str) -> None:
     """Prepare a managed engine without changing this interpreter's packages."""
     with UniTTS(provider=provider, device=device, cache_dir=cache_dir, model_dir=model_dir) as engine:
-        click.echo(json.dumps(engine.provider.setup(), indent=2))
+        click.echo(json.dumps(engine.setup(), indent=2))
 
 
 @main.command()
 @click.argument("provider", type=click.Choice(["indextts", "indextts-2.5", "index-tts"]))
 @click.option("--cache-dir", type=click.Path(file_okay=False, path_type=Path))
 @click.option("--model-dir", type=click.Path(file_okay=False, path_type=Path))
+@user_errors
 def doctor(provider: str, cache_dir: Path | None, model_dir: Path | None) -> None:
     """Show managed paths and installation state without downloading models."""
-    from unitts.managed.indextts import IndexTTSEnvironment
-    click.echo(json.dumps(IndexTTSEnvironment(cache_dir, model_dir).status(), indent=2))
+    with UniTTS(provider=provider, cache_dir=cache_dir, model_dir=model_dir) as engine:
+        click.echo(json.dumps(engine.status(), indent=2))
 
 
 @main.command()
@@ -157,7 +158,7 @@ def providers_command() -> None:
     separator = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
 
     def render(row: tuple[str, ...]) -> str:
-        cells = [f" {value:<{width}} " for value, width in zip(row, widths)]
+        cells = [f" {value:<{width}} " for value, width in zip(row, widths, strict=True)]
         return "|" + "|".join(cells) + "|"
 
     click.echo(separator)

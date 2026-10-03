@@ -91,6 +91,10 @@ unitts doctor indextts
 unitts synthesize "Hello" --provider indextts --reference-audio reference.wav --output hello.wav
 ```
 
+The same management operations are available as `tts.setup()` and `tts.status()`;
+`tts.capabilities` describes the configured provider. Status inspection does not
+download dependencies or load model weights.
+
 The backend is experimental; real-GPU compatibility is not certified. Model code
 and weights retain their upstream license. See [the IndexTTS guide](docs/indextts.md)
 for Colab setup, emotion controls, cached checkpoints, logs, and limitations.
@@ -123,6 +127,14 @@ GPU engines should use separate environments because their PyTorch, CUDA, and mo
 package requirements can conflict. Normal tests do not download model weights.
 
 ## Project layout
+
+The SDK, CLI, web UI, and real service engines use the same `UniTTS` provider
+execution path. `SynthesisRequest` adds service metadata to the shared
+`TTSRequest` schema; it does not maintain separate synthesis-field validation.
+`Capabilities` is the single capability schema. Older capability class names
+remain aliases for compatibility. Engine manifests derive executable capabilities
+from their provider, while managed and service workers share one versioned
+JSON-lines protocol. IndexTTS's model environment remains isolated from the caller.
 
 - `unitts/core` and `unitts/providers`: synchronous SDK, CLI, and web UI
 - `unitts/contracts` and `unitts/engine_sdk`: engine interfaces and wire models

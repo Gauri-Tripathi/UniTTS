@@ -33,10 +33,8 @@ class UniTTS:
         self.set_provider(provider, **kwargs)
 
     def set_provider(self, provider: str, **kwargs: Any) -> None:
-        """Switch providers, cleaning up any loaded model first."""
+        """Validate the replacement before releasing the current provider."""
 
-        if self.provider is not None:
-            self.provider.cleanup()
         provider_cls = ProviderRegistry.get(provider)
         options = provider_options(provider, kwargs)
         min_vram_gb = options.pop("min_vram_gb", None)
@@ -44,26 +42,43 @@ class UniTTS:
         if preference == "auto" and provider_cls.capabilities.provider_type in {ProviderType.API, ProviderType.CPU}:
             preference = "cpu"
         # Managed providers must inspect hardware in their own interpreter.
-        device = preference if getattr(provider_cls, "manages_device", False) else resolve_device(preference, min_vram_gb=min_vram_gb)
-        logger.info("Loading provider %s on %s", provider, device)
-        self.provider = provider_cls(device=device, **options)
+        device = preference if provider_cls.manages_device else resolve_device(preference, min_vram_gb=min_vram_gb)
+        logger.info("Configuring provider %s on %s", provider, device)
+        replacement = provider_cls(device=device, **options)
+        if self.provider is not None:
+            try:
+                self.provider.cleanup()
+            except BaseException:
+                replacement.cleanup()
+                raise
+        self.provider = replacement
         self.provider_name = provider
+
+    def _active_provider(self) -> BaseProvider:
+        if self.provider is None:
+            raise RuntimeError("No provider loaded")
+        return self.provider
 
     @property
     def capabilities(self) -> Capabilities:
         """Capabilities of the configured provider, safe for callers to inspect."""
-        if self.provider is None:
-            raise RuntimeError("No provider loaded")
-        return self.provider.capabilities.model_copy(deep=True)
+        return self._active_provider().capabilities.model_copy(deep=True)
+
+    def setup(self) -> dict[str, Any]:
+        """Prepare the active provider through the same entrypoint as synthesis."""
+        return self._active_provider().setup()
+
+    def status(self) -> dict[str, Any]:
+        """Inspect the active provider without downloads or model loading."""
+        return self._active_provider().status()
 
     def synthesize(self, text: str | TTSRequest, **kwargs: Any) -> TTSResponse:
         """Synthesize speech from text or a prebuilt request."""
 
-        if self.provider is None:
-            raise RuntimeError("No provider loaded")
+        provider = self._active_provider()
         request = text if isinstance(text, TTSRequest) else TTSRequest(text=text, **kwargs)
         started = perf_counter()
-        response = self.provider.synthesize(request)
+        response = provider.synthesize(request)
         elapsed = perf_counter() - started
         response.metadata["synthesis_seconds"] = elapsed
         if response.duration_seconds > 0:
@@ -85,16 +100,12 @@ class UniTTS:
     def synthesize_dialogue(self, request: DialogueRequest) -> TTSResponse:
         """Synthesize a multi-turn dialogue request."""
 
-        if self.provider is None:
-            raise RuntimeError("No provider loaded")
-        return self.provider.synthesize_dialogue(request)
+        return self._active_provider().synthesize_dialogue(request)
 
     def list_voices(self) -> list[dict[str, Any]]:
         """Return voices from the active provider."""
 
-        if self.provider is None:
-            raise RuntimeError("No provider loaded")
-        return self.provider.list_voices()
+        return self._active_provider().list_voices()
 
     def cleanup(self) -> None:
         """Release active provider resources."""

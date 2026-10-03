@@ -3,14 +3,8 @@
 UniTTS loads GPU providers lazily. Installing `.[gpu]` supplies shared packages
 only; it does not install F5-TTS, Dia, Coqui TTS, or Qwen3-TTS.
 
-The current cluster warning shows that the installed PyTorch CUDA build expects a
-newer NVIDIA driver than is available. Qwen still completed, but it took more than
-a minute and may have fallen back to CPU. Ask the cluster administrator for the
-supported CUDA/PyTorch combination before changing PyTorch in the working Qwen
-environment.
-
-Before starting any local GPU provider, run this lightweight check from inside a
-Slurm GPU allocation. Do not run a GPU test when it reports `False`.
+Before starting a provider that runs in the current Python environment, check
+CUDA availability there. On a cluster, run inside your GPU allocation.
 
 ```bash
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
@@ -26,7 +20,7 @@ that environment:
 ```bash
 conda create -n unitts-f5 python=3.11
 conda activate unitts-f5
-cd /nlsasfs/home/dibd/dibd-speech/iitm/triga/experiments/emotion_tts
+# Run the following command from your UniTTS checkout.
 python -m pip install -e ".[gpu]"
 ```
 
@@ -59,7 +53,7 @@ open("qwen.wav", "wb").write(response.audio)
 
 ## F5-TTS
 
-In a separate environment, install FFmpeg using the cluster-supported mechanism,
+In a separate environment, install FFmpeg using your operating system's package manager,
 then install the official package:
 
 ```bash
@@ -87,7 +81,7 @@ open("f5.wav", "wb").write(response.audio)
 Use the maintained Coqui package, not the unmaintained `TTS` PyPI package:
 
 ```bash
-# In a new unitts-coqui environment on this CUDA 12.4 driver cluster:
+# Example for a separate environment using CUDA 12.4 wheels:
 python -m pip install --upgrade --force-reinstall \
   torch==2.6.0 torchaudio==2.6.0 \
   --index-url https://download.pytorch.org/whl/cu124
@@ -95,10 +89,10 @@ python -m pip install coqui-tts transformers==4.57.6
 ```
 
 `coqui-tts` requires both `torch` and `torchaudio`; it does not install either
-one. Their versions and CUDA build must match. The CUDA 12.4 pair above is for
-the driver reported on this cluster. Use the cluster-supported pair instead if
-your allocated node reports a different driver capability. XTTS is currently
-incompatible with Transformers 5.1+, so pin Transformers to `4.57.6`.
+one. Their versions and CUDA build must match. The CUDA 12.4 pair above is an
+example, not a hardware check. Choose a compatible pair for your GPU and driver.
+The current UniTTS XTTS adapter rejects Transformers 5.1+; this example pins
+Transformers to `4.57.6`.
 
 ```python
 from unitts import TTSRequest, UniTTS
@@ -174,23 +168,14 @@ open("fish-speech.wav", "wb").write(response.audio)
 ```
 
 Pass `endpoint="http://host:port/v1/tts"` to `UniTTS` when the Fish Speech
-server is not local. Run the explicit smoke test only after the server is ready:
+server is not local.
 
-```bash
-python test_gpu_models.py fish-speech
-```
+## IndexTTS-2.5
 
-## Smoke Tests
-
-The test runner checks whether each optional package is installed before loading a
-model. Missing providers are reported as `SKIPPED`, rather than failed. Running a
-test does load model weights and can consume a GPU allocation.
-
-```bash
-cd /nlsasfs/home/dibd/dibd-speech/iitm/triga/experiments
-python test_gpu_models.py --list
-python test_gpu_models.py f5-tts
-```
+IndexTTS uses a managed environment rather than your current Python's GPU stack.
+Install `.[indextts]`, then use `UniTTS(provider="indextts")` for setup, status,
+and synthesis. See [the IndexTTS guide](indextts.md) for the full workflow and
+the explicit real-GPU test. Ordinary unit tests do not download model weights.
 
 ## Upstream References
 
