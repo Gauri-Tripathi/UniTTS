@@ -22,7 +22,7 @@ class OpenAIProvider(HttpProvider):
     capabilities = CapabilityMatrix(
         provider_type=ProviderType.API,
         languages=["auto"],
-        streaming=True,
+        streaming=False,
         speed=True,
         output_formats=["mp3", "opus", "wav", "flac"],
         notes="Emotion and cloning are intentionally unsupported and produce warnings.",
@@ -64,7 +64,7 @@ class ElevenLabsProvider(HttpProvider):
         provider_type=ProviderType.API,
         languages=["auto"],
         voice_cloning=True,
-        streaming=True,
+        streaming=False,
         emotion=True,
         speed=True,
         output_formats=["mp3"],
@@ -108,7 +108,7 @@ class FishAudioProvider(HttpProvider):
         provider_type=ProviderType.API,
         languages=["auto"],
         voice_cloning=True,
-        streaming=True,
+        streaming=False,
         output_formats=["mp3", "wav"],
     )
 
@@ -143,7 +143,7 @@ class SmallestAIProvider(HttpProvider):
     capabilities = CapabilityMatrix(
         provider_type=ProviderType.API,
         languages=["auto"],
-        streaming=True,
+        streaming=False,
         speed=True,
         output_formats=["wav", "mp3"],
     )

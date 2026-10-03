@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
+
+from pydantic import BaseModel
 
 from unitts.core.capabilities import CapabilityMatrix
 from unitts.core.schemas import DialogueRequest, TTSRequest, TTSResponse
@@ -14,10 +16,20 @@ class BaseProvider(ABC):
 
     name: str
     capabilities: CapabilityMatrix
+    controls_model: ClassVar[type[BaseModel] | None] = None
+    manages_device: ClassVar[bool] = False
 
     def __init__(self, *, device: str = "auto", **kwargs: Any) -> None:
         self.device = device
         self.options = kwargs
+
+    def setup(self) -> dict[str, Any]:
+        """Prepare a managed environment when the provider supplies one."""
+        return self.status()
+
+    def status(self) -> dict[str, Any]:
+        """Inspect configuration without loading a model or making network calls."""
+        return {"provider": self.name, "managed": False, "configured_device": self.device}
 
     @abstractmethod
     def synthesize(self, request: TTSRequest) -> TTSResponse:
@@ -50,3 +62,4 @@ class BaseProvider(ABC):
 
     def cleanup(self) -> None:
         """Release provider resources."""
+        return None

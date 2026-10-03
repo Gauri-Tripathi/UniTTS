@@ -2,29 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-PROTOCOL_VERSION = "1.0"
+from unitts.core.capabilities import EngineCapabilities as EngineCapabilities
+from unitts.core.schemas import OutputFormat, TTSRequest
+from unitts.workers.protocol import PROTOCOL_VERSION as PROTOCOL_VERSION
 
-
-class AudioFormat(StrEnum):
-    WAV = "wav"
-    PCM_S16LE = "pcm_s16le"
-    MP3 = "mp3"
-    FLAC = "flac"
-    OPUS = "opus"
-
-
-class AudioEncoding(StrEnum):
-    WAV = "wav"
-    PCM_S16LE = "pcm_s16le"
-    MP3 = "mp3"
-    FLAC = "flac"
-    OPUS = "opus"
+AudioFormat = OutputFormat
+AudioEncoding = OutputFormat
 
 
 class GenerationMode(StrEnum):
@@ -58,23 +48,36 @@ class VoiceReference(BaseModel):
     sha256: str | None = None
 
 
-class SynthesisRequest(BaseModel):
-    """Architecture-neutral request; engine controls remain namespaced."""
+class SynthesisRequest(TTSRequest):
+    """Service envelope around the SDK request; synthesis fields are inherited."""
 
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(default_factory=lambda: str(uuid4()))
     text: str = Field(min_length=1)
     engine_id: str | None = None
-    language: str | None = None
-    voice: str | None = None
     reference: VoiceReference | None = None
-    speed: float = Field(default=1.0, gt=0.0, le=5.0)
-    seed: int | None = None
-    output_format: AudioFormat = AudioFormat.WAV
-    streaming: bool = False
+    stream: bool = Field(default=False, validation_alias=AliasChoices("streaming", "stream"), serialization_alias="streaming")
     mode: GenerationMode = GenerationMode.REALTIME
-    controls: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def streaming(self) -> bool:
+        return self.stream
+
+    def model_copy(self, *, update: Mapping[str, Any] | None = None, deep: bool = False) -> Self:
+        updates = dict(update or {})
+        if "streaming" in updates:
+            updates["stream"] = updates.pop("streaming")
+        return super().model_copy(update=updates, deep=deep)
+
+    @model_validator(mode="after")
+    def _reference_shape(self) -> Self:
+        if self.reference and self.reference_audio:
+            raise ValueError("Use reference or reference_audio, not both")
+        if self.reference and self.reference.transcript is not None and self.reference_text is not None:
+            if self.reference.transcript != self.reference_text:
+                raise ValueError("Conflicting reference transcripts")
+        return self
 
     @field_validator("text")
     @classmethod
@@ -82,6 +85,16 @@ class SynthesisRequest(BaseModel):
         if not value.strip():
             raise ValueError("text must not be blank")
         return value
+
+    def to_tts_request(self) -> TTSRequest:
+        """Translate the HTTP envelope once; providers only execute TTSRequest."""
+        values = self.model_dump(include=set(TTSRequest.model_fields), exclude_unset=True)
+        values.update(text=self.text, output_format=self.output_format.value, stream=self.streaming)
+        if self.reference:
+            values["reference_audio"] = self.reference.uri
+            if self.reference.transcript is not None:
+                values["reference_text"] = self.reference.transcript
+        return TTSRequest.model_validate(values)
 
 
 class AudioResult(BaseModel):
@@ -103,16 +116,6 @@ class AudioChunk(BaseModel):
     encoding: AudioEncoding
     data: bytes
     final: bool = False
-
-
-class EngineCapabilities(BaseModel):
-    streaming: bool = False
-    voice_cloning: bool = False
-    languages: list[str] = Field(default_factory=list)
-    output_formats: list[AudioFormat] = Field(default_factory=lambda: [AudioFormat.WAV])
-    execution_strategy: Literal["autoregressive", "flow_matching", "remote", "simple"] = "simple"
-    supports_seed: bool = True
-    safe_pause_boundaries: bool = False
 
 
 class LicenseInfo(BaseModel):

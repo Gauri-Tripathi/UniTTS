@@ -45,7 +45,7 @@ def test_config_strings_are_parsed_and_shared_cache_is_honored(tmp_path):
 
 
 @pytest.mark.parametrize("changes,match", [
-    ({"text": "   "}, "nonempty"),
+    ({"text": "   "}, "required"),
     ({"reference_audio": []}, "exactly one"),
     ({"language": "fr"}, "Unsupported.*language"),
     ({"speed": 3}, "speed"),
@@ -62,8 +62,8 @@ def test_invalid_request_does_not_install_or_load(reference, monkeypatch, change
     provider = IndexTTSProvider()
     start = Mock(side_effect=AssertionError("must validate first"))
     monkeypatch.setattr(provider, "_start", start)
-    request = TTSRequest(**({"text": "hello", "reference_audio": reference} | changes))
     with pytest.raises(ValueError, match=match):
+        request = TTSRequest(**({"text": "hello", "reference_audio": reference} | changes))
         provider.synthesize(request)
     start.assert_not_called()
 

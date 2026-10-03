@@ -7,6 +7,7 @@ import logging
 import threading
 import weakref
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -53,12 +54,14 @@ class IndexTTSControls(BaseModel):
 @ProviderRegistry.register("indextts-2.5")
 class IndexTTSProvider(BaseProvider):
     name = "indextts-2.5"
+    controls_model = IndexTTSControls
     manages_device = True  # Host Torch may be absent or incompatible (e.g. Colab).
     capabilities = CapabilityMatrix(
         provider_type=ProviderType.GPU, languages=["en", "zh", "ja", "es", "ar"],
         voices=False, voice_cloning=True, emotion=True, speed=True, generation_controls=True,
         streaming=False, output_formats=["wav"], requires_gpu=True, max_text_length=10000,
         notes="Managed IndexTTS-2.5 worker. Requires one local reference recording; CPU is opt-in.",
+        execution_strategy="autoregressive", supports_seed=True,
     )
 
     def __init__(self, *, device: str = "auto", **kwargs: Any) -> None:
@@ -85,18 +88,30 @@ class IndexTTSProvider(BaseProvider):
             install=self.options.get("auto_install", True),
         )
 
+    def status(self) -> dict[str, Any]:
+        return {
+            **self.environment.status(), "provider": self.name, "managed": True,
+            "configured_device": self.device,
+            "worker_running": self._worker is not None and self._worker.process.poll() is None,
+        }
+
     def _start(self) -> None:
+        start = perf_counter()
         self.setup()
+        setup_seconds = perf_counter() - start
         logger.warning("Loading IndexTTS in its managed worker; log: %s", self.environment.install_dir / "worker.log")
         worker = WorkerProcess(
             [str(self.environment.python), "-I", str(WORKER_SCRIPT), "--source", str(self.environment.source)],
             cwd=self.environment.source, log_path=self.environment.install_dir / "worker.log",
+            label="IndexTTS",
         )
         try:
+            start = perf_counter()
             self._runtime_info = worker.call({
                 "operation": "load", "device": self.device,
                 "dtype": self.options.get("dtype", "auto"), "model_dir": str(self.environment.model_dir),
             }, timeout=float(self.options.get("load_timeout", 600)))
+            self._runtime_info.update(setup_seconds=setup_seconds, model_load_seconds=perf_counter() - start)
         except BaseException:
             worker.close()
             raise
@@ -163,6 +178,7 @@ class IndexTTSProvider(BaseProvider):
     def synthesize(self, request: TTSRequest) -> TTSResponse:
         options, warnings = self._prepare(request)  # Validate before any install/download/load.
         with self._lock:
+            cold_start = self._worker is None
             if self._worker is None:
                 self._start()
             assert self._worker is not None
@@ -178,7 +194,10 @@ class IndexTTSProvider(BaseProvider):
                 audio=base64.b64decode(result["audio_base64"], validate=True),
                 sample_rate=result["sample_rate"], duration_seconds=result["duration_seconds"],
                 warnings=warnings + result.get("warnings", []),
-                metadata={"provider": self.name, "model": "IndexTeam/IndexTTS-2.5", **self._runtime_info},
+                metadata={
+                    "provider": self.name, "model": "IndexTeam/IndexTTS-2.5", **self._runtime_info,
+                    "cold_start": cold_start, "diagnostics": result.get("diagnostics", {}),
+                },
             )
 
     def cleanup(self) -> None:

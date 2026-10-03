@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from unitts.core.capabilities import ProviderCapabilities as ProviderCapabilities
+
 
 class Emotion(StrEnum):
     """Common cross-provider emotion vocabulary."""
@@ -42,9 +44,10 @@ class SpeakingStyle(StrEnum):
 
 
 class OutputFormat(StrEnum):
-    """Supported output container names."""
+    """Audio formats shared by requests, responses, and worker transports."""
 
     WAV = "wav"
+    PCM_S16LE = "pcm_s16le"
     MP3 = "mp3"
     OGG = "ogg"
     FLAC = "flac"
@@ -125,7 +128,7 @@ class TTSRequest(BaseModel):
 
     @model_validator(mode="after")
     def _text_or_ssml_required(self) -> "TTSRequest":
-        if not any([self.text, self.ssml, self.phonemes]):
+        if not any(value and value.strip() for value in (self.text, self.ssml, self.phonemes)):
             raise ValueError("One of text, ssml, or phonemes is required")
         return self
 
@@ -176,32 +179,6 @@ class VoiceInfo(BaseModel):
     gender: str | None = None
     preview_url: str | None = None
     supports_cloning: bool = False
-
-
-class ProviderCapabilities(BaseModel):
-    """Serializable provider capability metadata for docs and UIs."""
-
-    name: str
-    provider_type: str
-    supports_streaming: bool = False
-    supports_voice_cloning: bool = False
-    supports_reference_audio: bool = False
-    supports_emotion: bool = False
-    supports_emotion_list: list[Emotion] = Field(default_factory=list)
-    supports_speaking_style: bool = False
-    supports_ssml: bool = False
-    supports_speed: bool = True
-    supports_pitch: bool = False
-    supports_voice_description: bool = False
-    supports_dialogue: bool = False
-    supports_non_verbal: bool = False
-    supports_breathing: bool = False
-    supported_languages: list[str] = Field(default_factory=list)
-    supported_formats: list[AudioFormat] = Field(default_factory=lambda: [AudioFormat.WAV])
-    max_text_length: int | None = None
-    requires_api_key: bool = False
-    requires_gpu: bool = False
-    min_gpu_vram_gb: float | None = None
 
 
 class DialogueTurn(BaseModel):

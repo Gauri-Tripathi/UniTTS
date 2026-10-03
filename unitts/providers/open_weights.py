@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
+from pydantic import BaseModel, ConfigDict, Field
 
 from unitts.core.capabilities import CapabilityMatrix, ProviderType
 from unitts.core.device import cleanup_torch
@@ -306,6 +307,13 @@ class FishSpeechProvider(HttpProvider):
         )
 
 
+class QwenControls(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    voice_description: str | None = None
+
+
 @ProviderRegistry.register("qwen3-tts")
 @ProviderRegistry.register("qwen-tts")
 class Qwen3TTSProvider(HttpProvider):
@@ -321,17 +329,19 @@ class Qwen3TTSProvider(HttpProvider):
     """
 
     name = "qwen3-tts"
+    controls_model = QwenControls
     capabilities = CapabilityMatrix(
         provider_type=ProviderType.GPU,
         languages=["zh", "en", "de", "fr", "es", "it", "pt", "ja", "ko", "ar"],
         voice_cloning=True,
-        streaming=True,
+        streaming=False,
         voice_description=True,
         output_formats=["wav"],
         generation_controls=True,
         requires_gpu=True,
         min_gpu_vram_gb=8.0,
         notes="Supported features depend on the selected Qwen3-TTS model variant.",
+        execution_strategy="autoregressive", supports_seed=True,
     )
 
     # Correct defaults for the qwen-tts PyPI package.
@@ -398,6 +408,19 @@ class Qwen3TTSProvider(HttpProvider):
         return self._LANG_MAP.get(code, code)  # pass through if already full
 
     def _call_inference(self, request: TTSRequest) -> Any:
+        overrides = QwenControls.model_validate(request.controls).model_dump(exclude_unset=True, exclude_none=True)
+        for field, value in overrides.items():
+            if field in request.model_fields_set and getattr(request, field) != value:
+                raise ValueError(f"Conflicting Qwen control: {field}")
+        if overrides:
+            request = TTSRequest.model_validate(request.model_dump(exclude_unset=True) | overrides)
+        if request.seed is not None:
+            import torch
+            torch.manual_seed(request.seed)
+        generation = {
+            field: getattr(request, field) for field in ("temperature", "top_k", "top_p", "repetition_penalty")
+            if field in request.model_fields_set and getattr(request, field) is not None
+        }
         text = request.text or request.ssml or request.phonemes or ""
         language = self._resolve_language(request.language)
         model_id = str(self.options.get("model", self._DEFAULT_MODEL))
@@ -417,6 +440,7 @@ class Qwen3TTSProvider(HttpProvider):
                 language=language,
                 ref_audio=ref_audio,
                 ref_text=request.reference_text,
+                **generation,
             )
 
         # --- voice design path (description-driven) ---
@@ -433,6 +457,7 @@ class Qwen3TTSProvider(HttpProvider):
                     text=text,
                     instruct=instruct,
                     language=language,
+                    **generation,
                 )
             except ValueError:
                 # CustomVoice model variants don't support voice design;
@@ -445,6 +470,7 @@ class Qwen3TTSProvider(HttpProvider):
             text=text,
             speaker=speaker,
             language=language,
+            **generation,
         )
 
     def cleanup(self) -> None:

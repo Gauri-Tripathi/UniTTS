@@ -17,7 +17,7 @@ def test_synthesis_request_rejects_blank_text_and_unknown_fields() -> None:
     with pytest.raises(ValueError):
         SynthesisRequest(text="   ")
     with pytest.raises(ValueError):
-        SynthesisRequest(text="hello", temperature=1.0)
+        SynthesisRequest(text="hello", nonexistent_control=1.0)
 
 
 def test_manifest_validation_and_protocol_rejection() -> None:
